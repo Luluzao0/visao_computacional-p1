@@ -1,14 +1,15 @@
 # Leitor de Gabaritos - Avaliacao 1
 
-Aplicacao em Python para ler, corrigir e registrar gabaritos por imagem. O projeto usa OpenCV para identificar o gabarito na foto, Streamlit para a interface no navegador/celular e SQLite para guardar os resultados localmente no computador.
+Aplicacao em Python para ler, corrigir e registrar gabaritos por imagem. Usa OpenCV para identificar o gabarito na foto, Streamlit para a interface no navegador/celular e SQLite para guardar os resultados localmente no computador.
 
-O objetivo e simples: o professor abre o app no PC, acessa pelo celular na mesma rede WiFi, tira uma foto do gabarito, informa o ID do candidato e o resultado fica salvo em um banco local `.db`, pronto para consulta e exportacao em CSV.
+O fluxo: o professor abre o app no PC, acessa pelo celular na mesma rede WiFi, tira uma foto do gabarito, informa o ID do candidato, e o resultado fica salvo em um banco local `.db`, pronto para consulta e exportacao em CSV.
 
 ---
 
 ## Sumario
 
 - [O que o sistema faz](#o-que-o-sistema-faz)
+- [Estrutura do projeto](#estrutura-do-projeto)
 - [Como funciona](#como-funciona)
 - [Requisitos](#requisitos)
 - [Instalacao](#instalacao)
@@ -16,8 +17,8 @@ O objetivo e simples: o professor abre o app no PC, acessa pelo celular na mesma
 - [Usar a camera do computador](#usar-a-camera-do-computador)
 - [Banco de dados SQLite](#banco-de-dados-sqlite)
 - [Exportar resultados](#exportar-resultados)
-- [Arquivos do projeto](#arquivos-do-projeto)
 - [Configurar respostas corretas](#configurar-respostas-corretas)
+- [Scripts auxiliares](#scripts-auxiliares)
 - [Dicas para boa leitura da foto](#dicas-para-boa-leitura-da-foto)
 - [Problemas comuns](#problemas-comuns)
 - [Fluxo recomendado de uso](#fluxo-recomendado-de-uso)
@@ -39,74 +40,94 @@ Principais recursos:
 - grava os resultados em SQLite local;
 - mostra uma aba de banco com filtros por ID e data;
 - exporta resultados para CSV;
-- permite visualizar planilhas `.csv` e `.xlsx` existentes na pasta do projeto;
+- permite visualizar planilhas `.csv` e `.xlsx` da pasta `data/`;
 - tambem possui modo de webcam local pelo OpenCV.
+
+---
+
+## Estrutura do projeto
+
+```
+Avaliacao 1/
+|-- README.md
+|-- .gitignore
+`-- p1_lucio/
+    |-- app_streamlit.py        # entry point: app web/celular
+    |-- webcam_app.py           # entry point: webcam local
+    |-- wifi_link.py            # imprime IP local + link Streamlit
+    |-- requirements.txt
+    |-- resultados.db           # banco gerado em runtime (gitignored)
+    |-- src/
+    |   |-- __init__.py
+    |   |-- config.py           # constantes (paths, respostas corretas, etc.)
+    |   |-- extrator.py         # detecta e recorta o gabarito (OpenCV)
+    |   |-- processador.py      # pipeline de correcao da imagem
+    |   |-- banco.py            # operacoes SQLite
+    |   `-- utils.py            # helpers de formatacao
+    |-- data/
+    |   |-- campos.pkl          # posicoes (x, y, w, h) dos campos
+    |   |-- resp.pkl            # mapeamento campo -> alternativa
+    |   |-- posicoes_gabarito.xlsx
+    |   `-- recorte.jpg
+    |-- docs/
+    |   |-- Modelo_gabarito.pdf
+    |   |-- Projeto_avaliacao_1.pdf
+    |   `-- WIFI_STREAMLIT.md
+    |-- scripts/
+    |   |-- gerar_dataset.py    # gera CSV ficticio de respostas
+    |   `-- corrigir_dataset.py # corrige o CSV gerado
+    `-- capturas/               # imagens salvas em runtime (gitignored)
+```
 
 ---
 
 ## Como funciona
 
-O fluxo principal acontece no arquivo `app_streamlit.py`.
+O fluxo principal acontece em `app_streamlit.py`.
 
 1. O usuario abre o Streamlit no computador.
 2. O celular acessa o link do app pela mesma rede WiFi.
 3. O usuario permite a camera no navegador.
 4. O usuario informa o ID do candidato.
 5. O usuario tira a foto do gabarito.
-6. O OpenCV analisa a imagem e tenta encontrar o maior contorno do gabarito.
+6. O OpenCV (`src/extrator.py`) detecta o maior quadrilatero do gabarito.
 7. O gabarito e recortado, binarizado e comparado com as posicoes salvas.
-8. O app calcula acertos, erros e pontos.
-9. O resultado e salvo no banco `resultados.db`.
+8. O app calcula acertos, erros e pontos (`src/processador.py`).
+9. O resultado e salvo no banco `resultados.db` (`src/banco.py`).
 10. A aba **Banco** permite visualizar, filtrar e exportar os registros.
 
 ---
 
 ## Requisitos
 
-Instale uma versao recente do Python. O projeto foi usado com Python 3.13, mas tambem deve funcionar com Python 3.10 ou superior.
+Python 3.10 ou superior (testado com Python 3.13).
 
-Bibliotecas usadas:
+Bibliotecas usadas (em `p1_lucio/requirements.txt`):
 
 - `opencv-python`
 - `numpy`
 - `streamlit`
 - `pandas`
 - `openpyxl`
-- `sqlite3` (ja vem com o Python)
-
-As dependencias externas estao em:
-
-```text
-requirements.txt
-```
+- `sqlite3` (vem com o Python)
 
 ---
 
 ## Instalacao
 
-Abra o PowerShell na pasta raiz do projeto, ou seja, na pasta que contem `p1_lucio`.
+Abra o PowerShell na raiz do projeto (a pasta que contem `p1_lucio/`).
 
-Crie um ambiente virtual:
+Crie e ative um ambiente virtual:
 
 ```powershell
 python -m venv .venv
-```
-
-Ative o ambiente virtual:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-Entre na pasta do app:
+Entre na pasta do app e instale as dependencias:
 
 ```powershell
 cd p1_lucio
-```
-
-Instale as dependencias:
-
-```powershell
 pip install -r requirements.txt
 ```
 
@@ -122,23 +143,21 @@ Depois feche e abra o PowerShell novamente.
 
 ## Executar no celular com Streamlit
 
-Este e o modo recomendado.
-
-Na pasta `p1_lucio`, rode:
+Modo recomendado. Na pasta `p1_lucio`:
 
 ```powershell
 streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Depois descubra o IP local do computador:
+Descubra o IP local:
 
 ```powershell
 python wifi_link.py
 ```
 
-O script mostra algo parecido com:
+A saida e algo como:
 
-```text
+```
 IP local: 192.168.0.10
 Link Streamlit: http://192.168.0.10:8501
 ```
@@ -147,60 +166,38 @@ Abra esse link no navegador do celular.
 
 Importante:
 
-- o celular e o computador precisam estar na mesma rede WiFi;
-- se a porta `8501` estiver ocupada, use outra, como `8502`;
-- se o firewall do Windows bloquear, permita o acesso do Python/Streamlit na rede privada;
-- no navegador do celular, permita o uso da camera.
-
-Exemplo usando outra porta:
-
-```powershell
-streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8502
-```
-
-Nesse caso, o link no celular tambem deve usar `8502`.
+- celular e PC precisam estar na mesma rede WiFi;
+- se a porta `8501` estiver ocupada, use outra (ex.: `8502`);
+- se o firewall do Windows bloquear, libere o acesso do Python/Streamlit em rede privada;
+- no navegador do celular, autorize o uso da camera.
 
 ---
 
 ## Usar a camera do computador
 
-Tambem existe um modo local com OpenCV:
+Modo local com OpenCV:
 
 ```powershell
-python mainWebcan.py
+python webcam_app.py
 ```
 
-Esse modo abre janelas do OpenCV:
+Abre janelas do OpenCV:
 
 - `img`: imagem principal com anotacoes;
 - `Gabarito`: recorte do gabarito;
 - `IMG TH`: imagem limiarizada usada para detectar marcacoes.
 
-Para sair, pressione:
+Para sair, pressione `q`.
 
-```text
-q
-```
-
-Observacao: para uso no celular, prefira `app_streamlit.py`.
+> Para uso no celular, prefira `app_streamlit.py`.
 
 ---
 
 ## Banco de dados SQLite
 
-O app cria automaticamente o banco:
+O app cria automaticamente o arquivo `resultados.db` em `p1_lucio/`.
 
-```text
-resultados.db
-```
-
-Esse arquivo fica dentro da pasta `p1_lucio`.
-
-Tabela principal:
-
-```text
-capturas
-```
+Tabela principal: `capturas`.
 
 Campos salvos:
 
@@ -209,122 +206,67 @@ Campos salvos:
 | `id` | ID interno do registro |
 | `candidato_id` | ID informado antes da captura |
 | `timestamp` | Data e hora da captura |
-| `status_geral` | Status da leitura, como `corrigido` ou `gabarito_nao_encontrado` |
-| `respostas` | Lista de respostas detectadas |
+| `status_geral` | `corrigido` ou `gabarito_nao_encontrado` |
+| `respostas` | Lista JSON de respostas detectadas |
 | `status` | Status por questao: `ok`, `vazio` ou `multiplo` |
 | `acertos` | Quantidade de respostas corretas |
-| `erros` | Quantidade de respostas erradas, vazias ou multiplas |
+| `erros` | Quantidade de respostas erradas/vazias/multiplas |
 | `pontos` | Pontuacao final |
 | `caminho_foto` | Caminho da foto original |
 | `caminho_anotada` | Caminho da imagem com anotacoes |
 | `caminho_gabarito` | Caminho do recorte do gabarito |
 | `caminho_limiar` | Caminho da imagem limiarizada |
-| `foto_hash` | Hash usado para evitar duplicidade da mesma foto |
+| `foto_hash` | Hash usado para evitar duplicidade |
 
-O SQLite e local. Ele nao precisa de internet, servidor externo ou cadastro.
+Para backup, copie:
 
-Se quiser fazer backup dos resultados, copie estes itens:
-
-```text
-resultados.db
-capturas/
+```
+p1_lucio/resultados.db
+p1_lucio/capturas/
 ```
 
 ---
 
 ## Exportar resultados
 
-No Streamlit, abra a aba:
-
-```text
-Banco
-```
-
-Nela voce pode:
+Na aba **Banco** do Streamlit voce pode:
 
 - filtrar por ID do candidato;
 - filtrar por intervalo de datas;
-- visualizar todos os registros encontrados;
+- visualizar todos os registros;
 - baixar um CSV com o botao **Exportar CSV**.
-
-O CSV exportado inclui:
-
-- ID do registro;
-- ID do candidato;
-- data/hora;
-- status geral;
-- respostas detectadas;
-- status por questao;
-- acertos;
-- erros;
-- pontos;
-- caminhos das imagens salvas.
-
----
-
-## Arquivos do projeto
-
-| Arquivo/Pasta | Funcao |
-| --- | --- |
-| `app_streamlit.py` | Interface principal para celular/navegador |
-| `mainWebcan.py` | Leitor usando webcam local com OpenCV |
-| `process_gabarito.py` | Logica central de analise e correcao da imagem |
-| `extrairGabarito.py` | Detecta e recorta o gabarito na imagem |
-| `wifi_link.py` | Mostra o IP local para acessar no celular |
-| `requirements.txt` | Dependencias do projeto |
-| `campos.pkl` | Posicoes das alternativas no gabarito |
-| `resp.pkl` | Mapeamento das alternativas |
-| `capturas/` | Fotos e imagens geradas durante as correcoes |
-| `resultados.db` | Banco SQLite local com os resultados |
-| `gerar_dataset.py` | Gera dados ficticios de candidatos em CSV |
-| `corrigir_dataset.py` | Corrige um CSV de respostas simuladas |
-| `README_WIFI_STREAMLIT.txt` | Guia rapido antigo para acesso via WiFi |
-| `recorte.jpg` | Imagem auxiliar usada no desenvolvimento/testes |
-| `Modelo gabarito.pdf` | Modelo do gabarito |
-| `Projeto avaliação 1.pdf` | Documento do projeto |
-| `posiçoes gabarito.xlsx` | Planilha com posicoes do gabarito |
 
 ---
 
 ## Configurar respostas corretas
 
-As respostas corretas estao definidas diretamente nos arquivos principais.
-
-No Streamlit:
+As respostas corretas estao em [p1_lucio/src/config.py](p1_lucio/src/config.py):
 
 ```python
-respostas_corretas = ["1-A", "2-C", "3-B", "4-A", "5-D"]
+RESPOSTAS_CORRETAS = ["1-A", "2-C", "3-B", "4-A", "5-D"]
 ```
 
-No modo webcam:
+Cada item segue o formato `numero-alternativa`. Edite essa lista quando a prova mudar — o app web e a webcam usam a mesma constante.
 
-```python
-respostasCorretas = ["1-A", "2-C", "3-B", "4-A", "5-D"]
+---
+
+## Scripts auxiliares
+
+Em [p1_lucio/scripts/](p1_lucio/scripts/):
+
+```powershell
+python scripts/gerar_dataset.py
+python scripts/corrigir_dataset.py
 ```
 
-Cada item segue o formato:
+- `gerar_dataset.py` cria `dataset_gabaritos.csv` com 20 candidatos ficticios.
+- `corrigir_dataset.py` le o CSV anterior e gera `resultado_pontuacao.csv`.
 
-```text
-numero-da-questao-alternativa
-```
-
-Exemplos:
-
-```text
-1-A
-2-C
-3-B
-4-A
-5-D
-```
-
-Se a prova mudar, ajuste essa lista antes de iniciar a correcao.
+Os arquivos gerados ficam na propria pasta `scripts/` e sao ignorados pelo git.
 
 ---
 
 ## Dicas para boa leitura da foto
-
-Para melhorar a deteccao:
 
 - coloque o gabarito sobre uma superficie plana;
 - evite sombras fortes;
@@ -336,70 +278,48 @@ Para melhorar a deteccao:
 - evite rasuras perto das bolhas;
 - mantenha as bordas do gabarito dentro da imagem.
 
-Se o app mostrar `Nao foi possivel encontrar o gabarito na foto`, tire outra foto com mais luz e menos inclinacao.
-
 ---
 
 ## Problemas comuns
 
 ### O celular nao abre o link
 
-Verifique:
-
-- celular e PC estao na mesma rede;
-- o comando Streamlit foi iniciado com `--server.address 0.0.0.0`;
-- o IP usado e o IP correto da rede;
-- a porta usada no link e a mesma do comando;
-- o firewall do Windows permitiu o acesso.
+- celular e PC estao na mesma rede?
+- o Streamlit foi iniciado com `--server.address 0.0.0.0`?
+- o IP usado e o IP correto?
+- o firewall do Windows permitiu o acesso?
 
 ### A camera nao abre no celular
 
-Verifique:
-
 - permissao de camera no navegador;
-- se outro app esta usando a camera;
-- se o navegador permite camera nesse site;
-- se voce esta usando `http://IP:PORTA` correto.
+- nenhum outro app esta usando a camera;
+- voce esta usando `http://IP:PORTA` correto.
 
 ### A porta 8501 ja esta em uso
-
-Use outra porta:
 
 ```powershell
 streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8502
 ```
 
-Depois acesse:
-
-```text
-http://SEU-IP:8502
-```
-
 ### O gabarito nao e encontrado
-
-Possiveis causas:
 
 - folha muito inclinada;
 - baixa iluminacao;
-- sombra sobre o papel;
 - borda do gabarito fora da foto;
 - foto tremida;
-- contraste fraco entre papel e fundo.
+- contraste fraco.
 
 ### O banco parece vazio
 
-Confira:
-
-- se voce informou o ID do candidato antes da captura;
-- se a captura foi salva com sucesso;
-- se a aba **Banco** esta com filtro de data correto;
-- se o arquivo `resultados.db` esta na pasta `p1_lucio`.
+- voce informou o ID do candidato antes da captura?
+- a aba **Banco** esta com filtro de data correto?
+- o arquivo `resultados.db` esta em `p1_lucio/`?
 
 ---
 
 ## Fluxo recomendado de uso
 
-1. Abra o PowerShell na pasta do projeto.
+1. Abra o PowerShell na raiz do projeto.
 2. Ative o ambiente virtual.
 3. Entre em `p1_lucio`.
 4. Inicie o Streamlit.
@@ -410,5 +330,3 @@ Confira:
 9. Confira a pontuacao.
 10. Abra a aba **Banco** para revisar os registros.
 11. Exporte o CSV ao final.
-
-Com isso, todo o processo funciona localmente no PC, sem depender de internet externa ou servidor remoto.

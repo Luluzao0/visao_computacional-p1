@@ -1,0 +1,28 @@
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Banco de dados local e capturas (gerados em tempo de execucao)
+*.db
+p1_lucio/capturas/*
+!p1_lucio/capturas/.gitkeep
+
+# Saidas geradas pelos scripts de dataset
+p1_lucio/scripts/dataset_gabaritos.csv
+p1_lucio/scripts/resultado_pontuacao.csv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
