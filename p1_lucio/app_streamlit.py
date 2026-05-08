@@ -25,6 +25,11 @@ from src.config import (
 st.set_page_config(page_title="Resultados", layout="wide")
 st.title("Resultados")
 
+if "SUPABASE_DB_URL" not in os.environ:
+    supabase_db_url = st.secrets.get("SUPABASE_DB_URL")
+    if supabase_db_url:
+        os.environ["SUPABASE_DB_URL"] = supabase_db_url
+
 campos, resp = processador.load_assets(BASE_DIR)
 banco.iniciar(DB_PATH)
 
