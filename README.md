@@ -38,6 +38,7 @@ Principais recursos:
 - calcula acertos, erros e pontuacao;
 - salva a foto original e imagens de apoio;
 - grava os resultados em SQLite local;
+- mostra dashboard com metricas, graficos e analise por captura;
 - mostra uma aba de banco com filtros por ID e data;
 - exporta resultados para CSV;
 - permite visualizar planilhas `.csv` e `.xlsx` da pasta `data/`;
@@ -94,7 +95,8 @@ O fluxo principal acontece em `app_streamlit.py`.
 6. O gabarito e recortado, binarizado e comparado com as posicoes salvas.
 7. O app calcula acertos, erros e pontos (`src/processador.py`).
 8. O resultado e salvo no banco `resultados.db` (`src/banco.py`).
-9. A aba **Banco** permite visualizar, filtrar e exportar os registros.
+9. A aba **Dashboard** atualiza metricas, graficos e planilha com os registros.
+10. A aba **Banco** permite visualizar, filtrar e exportar os registros.
 
 ---
 
@@ -259,6 +261,14 @@ Na aba **Banco** do Streamlit voce pode:
 - visualizar todos os registros;
 - baixar um CSV com o botao **Exportar CSV**.
 
+Na aba **Dashboard**, o sistema tambem mostra:
+
+- quantidade de capturas e correcoes;
+- media de pontos e taxa de acerto;
+- graficos por dia, status, pontuacao e erros por questao;
+- analise individual de cada captura;
+- planilha atualizada com botao **Exportar dashboard (CSV)**.
+
 ---
 
 ## Configurar respostas corretas
@@ -353,5 +363,6 @@ python wifi_link.py --run --port 8502
 7. Use **Enviar foto do celular** ou **Camera do navegador**.
 8. Tire ou escolha a foto do gabarito.
 9. Confira a pontuacao.
-10. Abra a aba **Banco** para revisar os registros.
-11. Exporte o CSV ao final.
+10. Abra a aba **Dashboard** para acompanhar os indicadores.
+11. Abra a aba **Banco** para revisar os registros.
+12. Exporte o CSV ao final.

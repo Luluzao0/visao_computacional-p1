@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 from datetime import date, datetime
 
+import altair as alt
 import cv2
 import numpy as np
 import pandas as pd
@@ -49,6 +51,75 @@ def _preparar_candidato_id():
 def _decodificar_imagem(foto_bytes):
     file_bytes = np.frombuffer(foto_bytes, dtype=np.uint8)
     return cv2.imdecode(file_bytes, 1)
+
+
+def _json_para_lista(valor):
+    if isinstance(valor, list):
+        return valor
+    try:
+        return json.loads(valor or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
+def _montar_dataframe_capturas(linhas):
+    registros = []
+    for linha in linhas:
+        respostas = _json_para_lista(linha.get("respostas"))
+        status_questoes = _json_para_lista(linha.get("status"))
+        registros.append(
+            {
+                "id": int(linha["id"]),
+                "candidato": linha["candidato_id"],
+                "data_hora": pd.to_datetime(linha["timestamp"], errors="coerce"),
+                "status": linha["status_geral"],
+                "respostas": respostas,
+                "status_questoes": status_questoes,
+                "acertos": int(linha.get("acertos") or 0),
+                "erros": int(linha.get("erros") or 0),
+                "pontos": float(linha.get("pontos") or 0),
+                "foto": linha.get("caminho_foto"),
+                "foto_corrigida": linha.get("caminho_anotada"),
+                "gabarito": linha.get("caminho_gabarito"),
+                "limiarizacao": linha.get("caminho_limiar"),
+            }
+        )
+    return pd.DataFrame(registros)
+
+
+def _montar_dataframe_questoes(df_capturas):
+    linhas = []
+    for captura in df_capturas.to_dict("records"):
+        respostas = captura.get("respostas") or []
+        status_questoes = captura.get("status_questoes") or []
+        total_questoes = max(
+            len(respostas),
+            len(status_questoes),
+            len(RESPOSTAS_CORRETAS),
+        )
+        for idx in range(total_questoes):
+            correta = RESPOSTAS_CORRETAS[idx] if idx < len(RESPOSTAS_CORRETAS) else ""
+            marcada = respostas[idx] if idx < len(respostas) else None
+            status = status_questoes[idx] if idx < len(status_questoes) else ""
+            linhas.append(
+                {
+                    "captura_id": captura["id"],
+                    "candidato": captura["candidato"],
+                    "data_hora": captura["data_hora"],
+                    "questao": idx + 1,
+                    "marcada": marcada,
+                    "correta": correta,
+                    "status": status,
+                    "acertou": marcada == correta and status == "ok",
+                }
+            )
+    return pd.DataFrame(linhas)
+
+
+def _exibir_imagem_dashboard(caminho, titulo, canais="BGR"):
+    if caminho and os.path.exists(caminho):
+        st.markdown(f"**{titulo}**")
+        st.image(caminho, channels=canais, use_container_width=True)
 
 
 def _salvar_imagens_correcao(prefixo, resultado):
@@ -238,6 +309,224 @@ def aba_correcao():
         st.rerun()
 
 
+def aba_dashboard():
+    st.subheader("Dashboard")
+    st.caption(
+        "O painel usa os registros do banco. Ao salvar uma nova captura, "
+        "o app recarrega e os indicadores sao atualizados."
+    )
+
+    if st.button("Atualizar dashboard"):
+        st.rerun()
+
+    linhas = banco.buscar(DB_PATH)
+    if not linhas:
+        st.info("Nenhuma captura salva ainda.")
+        return
+
+    df = _montar_dataframe_capturas(linhas)
+    df = df.dropna(subset=["data_hora"]).copy()
+    if df.empty:
+        st.info("Nenhuma captura com data valida encontrada.")
+        return
+
+    data_min = df["data_hora"].dt.date.min()
+    data_max = df["data_hora"].dt.date.max()
+    col_periodo, col_status, col_candidato = st.columns([2, 2, 2])
+    with col_periodo:
+        periodo = st.date_input(
+            "Periodo",
+            value=(data_min, data_max),
+            format="DD/MM/YYYY",
+            key="dashboard_periodo",
+        )
+    with col_status:
+        status_opcoes = sorted(df["status"].dropna().unique())
+        status_selecionados = st.multiselect(
+            "Status",
+            status_opcoes,
+            default=status_opcoes,
+            key="dashboard_status",
+        )
+    with col_candidato:
+        filtro_candidato = st.text_input(
+            "Filtrar candidato",
+            key="dashboard_candidato",
+        ).strip()
+
+    if isinstance(periodo, tuple):
+        data_inicio = periodo[0] if len(periodo) >= 1 else data_min
+        data_fim = periodo[1] if len(periodo) >= 2 else data_inicio
+    else:
+        data_inicio = data_fim = periodo
+
+    mascara = (
+        (df["data_hora"].dt.date >= data_inicio)
+        & (df["data_hora"].dt.date <= data_fim)
+    )
+    if status_selecionados:
+        mascara &= df["status"].isin(status_selecionados)
+    if filtro_candidato:
+        mascara &= df["candidato"].str.contains(filtro_candidato, case=False, na=False)
+
+    df_filtrado = df.loc[mascara].copy()
+    if df_filtrado.empty:
+        st.info("Nenhum registro encontrado para os filtros atuais.")
+        return
+
+    total_capturas = len(df_filtrado)
+    total_corrigidas = int((df_filtrado["status"] == "corrigido").sum())
+    media_pontos = float(df_filtrado["pontos"].mean())
+    total_respostas = int((df_filtrado["acertos"] + df_filtrado["erros"]).sum())
+    taxa_acerto = (
+        float(df_filtrado["acertos"].sum() / total_respostas * 100)
+        if total_respostas
+        else 0.0
+    )
+
+    met_total, met_corrigidas, met_media, met_taxa = st.columns(4)
+    met_total.metric("Capturas", total_capturas)
+    met_corrigidas.metric("Corrigidas", total_corrigidas)
+    met_media.metric("Media de pontos", f"{media_pontos:.2f}")
+    met_taxa.metric("Taxa de acerto", f"{taxa_acerto:.1f}%")
+
+    df_questoes = _montar_dataframe_questoes(df_filtrado)
+
+    col_graf1, col_graf2 = st.columns(2)
+    with col_graf1:
+        st.markdown("**Capturas por dia**")
+        capturas_dia = (
+            df_filtrado.assign(data=df_filtrado["data_hora"].dt.date)
+            .groupby("data", as_index=False)
+            .size()
+            .rename(columns={"size": "capturas"})
+        )
+        grafico_dia = (
+            alt.Chart(capturas_dia)
+            .mark_bar()
+            .encode(
+                x=alt.X("data:T", title="Data"),
+                y=alt.Y("capturas:Q", title="Capturas"),
+                tooltip=["data:T", "capturas:Q"],
+            )
+        )
+        st.altair_chart(grafico_dia, use_container_width=True)
+
+    with col_graf2:
+        st.markdown("**Distribuicao por status**")
+        status_df = (
+            df_filtrado["status"]
+            .value_counts()
+            .rename_axis("status")
+            .reset_index(name="quantidade")
+        )
+        grafico_status = (
+            alt.Chart(status_df)
+            .mark_arc(innerRadius=45)
+            .encode(
+                theta=alt.Theta("quantidade:Q"),
+                color=alt.Color("status:N", title="Status"),
+                tooltip=["status:N", "quantidade:Q"],
+            )
+        )
+        st.altair_chart(grafico_status, use_container_width=True)
+
+    col_graf3, col_graf4 = st.columns(2)
+    with col_graf3:
+        st.markdown("**Pontuacao por captura**")
+        grafico_pontos = (
+            alt.Chart(df_filtrado.sort_values("data_hora"))
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("data_hora:T", title="Data e hora"),
+                y=alt.Y("pontos:Q", title="Pontos"),
+                color=alt.Color("candidato:N", title="Candidato"),
+                tooltip=[
+                    "id:Q",
+                    "candidato:N",
+                    "data_hora:T",
+                    "acertos:Q",
+                    "erros:Q",
+                    "pontos:Q",
+                ],
+            )
+        )
+        st.altair_chart(grafico_pontos, use_container_width=True)
+
+    with col_graf4:
+        st.markdown("**Erros por questao**")
+        if df_questoes.empty:
+            st.info("Nao ha detalhes por questao para exibir.")
+        else:
+            erros_questao = (
+                df_questoes.assign(errou=~df_questoes["acertou"])
+                .groupby("questao", as_index=False)["errou"]
+                .sum()
+                .rename(columns={"errou": "erros"})
+            )
+            grafico_erros = (
+                alt.Chart(erros_questao)
+                .mark_bar()
+                .encode(
+                    x=alt.X("questao:O", title="Questao"),
+                    y=alt.Y("erros:Q", title="Erros"),
+                    tooltip=["questao:O", "erros:Q"],
+                )
+            )
+            st.altair_chart(grafico_erros, use_container_width=True)
+
+    st.markdown("**Analise por captura**")
+    opcoes = [
+        (
+            f"#{linha.id} | candidato {linha.candidato} | "
+            f"{linha.data_hora:%d/%m/%Y %H:%M:%S} | {linha.pontos:.2f} pts"
+        )
+        for linha in df_filtrado.sort_values("data_hora", ascending=False).itertuples()
+    ]
+    selecao = st.selectbox("Captura", opcoes, key="dashboard_captura")
+    captura_id = int(selecao.split("|", 1)[0].replace("#", "").strip())
+    captura = df_filtrado.loc[df_filtrado["id"] == captura_id].iloc[0]
+
+    cap_acertos, cap_erros, cap_pontos, cap_status = st.columns(4)
+    cap_acertos.metric("Acertos", int(captura["acertos"]))
+    cap_erros.metric("Erros", int(captura["erros"]))
+    cap_pontos.metric("Pontos", f"{float(captura['pontos']):.2f}")
+    cap_status.metric("Status", str(captura["status"]))
+
+    detalhes = df_questoes[df_questoes["captura_id"] == captura_id].copy()
+    if not detalhes.empty:
+        st.dataframe(
+            detalhes[["questao", "marcada", "correta", "status", "acertou"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    img1, img2, img3 = st.columns(3)
+    with img1:
+        _exibir_imagem_dashboard(captura["foto"], "Foto original")
+    with img2:
+        _exibir_imagem_dashboard(captura["foto_corrigida"], "Foto corrigida")
+    with img3:
+        _exibir_imagem_dashboard(captura["gabarito"], "Gabarito")
+
+    tabela_exportacao = df_filtrado.drop(
+        columns=["respostas", "status_questoes"], errors="ignore"
+    ).copy()
+    tabela_exportacao["data_hora"] = tabela_exportacao["data_hora"].dt.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    st.markdown("**Planilha atualizada**")
+    st.dataframe(tabela_exportacao, use_container_width=True, hide_index=True)
+    buffer = io.StringIO()
+    tabela_exportacao.to_csv(buffer, index=False)
+    st.download_button(
+        "Exportar dashboard (CSV)",
+        buffer.getvalue(),
+        file_name="dashboard_capturas.csv",
+        mime="text/csv",
+    )
+
+
 def aba_planilhas():
     st.subheader("Resultados das planilhas")
     arquivos = sorted(
@@ -313,11 +602,13 @@ def aba_banco():
     )
 
 
-tab_correcao, tab_planilhas, tab_banco = st.tabs(
-    ["Correcao por foto", "Planilhas", "Banco"]
+tab_correcao, tab_dashboard, tab_planilhas, tab_banco = st.tabs(
+    ["Correcao por foto", "Dashboard", "Planilhas", "Banco"]
 )
 with tab_correcao:
     aba_correcao()
+with tab_dashboard:
+    aba_dashboard()
 with tab_planilhas:
     aba_planilhas()
 with tab_banco:
