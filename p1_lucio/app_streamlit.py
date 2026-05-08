@@ -28,28 +28,17 @@ st.title("Resultados")
 campos, resp = processador.load_assets(BASE_DIR)
 banco.iniciar(DB_PATH)
 
-
-def _inicializar_estado():
-    if "camera_allowed" not in st.session_state:
-        st.session_state.camera_allowed = False
-    if "camera_denied" not in st.session_state:
-        st.session_state.camera_denied = False
+CANDIDATO_ID_KEY = "candidato_id_input"
+PROXIMO_CANDIDATO_ID_KEY = "proximo_candidato_id"
+MENSAGEM_CANDIDATO_ID_KEY = "mensagem_candidato_id"
 
 
-@st.dialog("Permissao da camera")
-def pedir_permissao_camera():
-    st.write("Permitir o uso da camera para a leitura do gabarito?")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Permitir"):
-            st.session_state.camera_allowed = True
-            st.session_state.camera_denied = False
-            st.rerun()
-    with col2:
-        if st.button("Nao permitir"):
-            st.session_state.camera_allowed = False
-            st.session_state.camera_denied = True
-            st.rerun()
+def _preparar_candidato_id():
+    proximo_id = st.session_state.pop(PROXIMO_CANDIDATO_ID_KEY, None)
+    if proximo_id is not None:
+        st.session_state[CANDIDATO_ID_KEY] = proximo_id
+    elif CANDIDATO_ID_KEY not in st.session_state:
+        st.session_state[CANDIDATO_ID_KEY] = banco.proximo_candidato_id(DB_PATH)
 
 
 def _decodificar_imagem(foto_bytes):
@@ -80,13 +69,13 @@ def _renderizar_resultado(resultado, registro_id, novo):
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Imagem**")
-        st.image(resultado["imagem"], channels="BGR", width="stretch")
+        st.image(resultado["imagem"], channels="BGR", use_container_width=True)
     with col2:
         st.markdown("**Gabarito**")
-        st.image(resultado["gabarito"], channels="BGR", width="stretch")
+        st.image(resultado["gabarito"], channels="BGR", use_container_width=True)
 
     st.markdown("**Limiarizacao**")
-    st.image(resultado["img_th"], channels="GRAY", width="stretch")
+    st.image(resultado["img_th"], channels="GRAY", use_container_width=True)
 
     st.markdown("**Pontuacao**")
     st.write(
@@ -115,11 +104,11 @@ def _renderizar_resultado(resultado, registro_id, novo):
             }
         )
     st.markdown("**Relatorio do gabarito**")
-    st.dataframe(pd.DataFrame(relatorio), width="stretch")
+    st.dataframe(pd.DataFrame(relatorio), use_container_width=True)
 
     st.markdown("**Posicoes do gabarito (x, y, w, h)**")
     df_campos = pd.DataFrame(utils.montar_tabela_campos(campos, resp))
-    st.dataframe(df_campos, width="stretch")
+    st.dataframe(df_campos, use_container_width=True)
 
     buffer = io.StringIO()
     df_campos.to_csv(buffer, index=False)
@@ -136,7 +125,7 @@ def _processar_foto(candidato_id, foto):
     imagem = _decodificar_imagem(foto_bytes)
     if imagem is None:
         st.warning("Nao foi possivel ler a foto capturada.")
-        return
+        return False
 
     agora = datetime.now()
     timestamp_db = agora.strftime("%Y-%m-%d %H:%M:%S")
@@ -188,32 +177,60 @@ def _processar_foto(candidato_id, foto):
             st.info(f"Captura salva no banco local (registro #{registro_id}).")
         else:
             st.info(f"Esta captura ja estava salva (registro #{registro_id}).")
-        return
+        return novo
 
     _renderizar_resultado(resultado, registro_id, novo)
+    return novo
 
 
 def aba_correcao():
-    if not st.session_state.camera_allowed:
-        if not st.session_state.camera_denied:
-            pedir_permissao_camera()
-        st.warning("Camera desativada. Permita o acesso para continuar.")
-        return
+    _preparar_candidato_id()
 
-    st.subheader("Camera do celular")
-    st.write("Aponte para o gabarito e tire a foto.")
+    st.subheader("Correcao por foto")
+    mensagem_id = st.session_state.pop(MENSAGEM_CANDIDATO_ID_KEY, None)
+    if mensagem_id:
+        st.success(mensagem_id)
     st.info(
-        "Se a camera nao abrir, permita o acesso no navegador. "
-        "Guia: https://docs.streamlit.io/knowledge-base/using-streamlit/enable-camera"
+        "No celular, se a camera do navegador ficar bloqueada por permissao, "
+        "use a opcao de enviar foto. Ela permite tirar uma foto pelo proprio "
+        "celular ou escolher uma imagem salva."
     )
-    candidato_id = st.text_input("ID do candidato").strip()
-    foto = st.camera_input("Capturar")
+    candidato_id = st.text_input("ID do candidato", key=CANDIDATO_ID_KEY).strip()
+
+    modo_foto = st.radio(
+        "Origem da foto",
+        ("Enviar foto do celular", "Camera do navegador"),
+        horizontal=True,
+    )
+
+    if modo_foto == "Enviar foto do celular":
+        foto = st.file_uploader(
+            "Tirar foto ou escolher imagem",
+            type=("jpg", "jpeg", "png"),
+            accept_multiple_files=False,
+        )
+    else:
+        st.caption(
+            "A camera do navegador pode exigir HTTPS no celular. "
+            "Se a permissao falhar, volte para a opcao de enviar foto."
+        )
+        foto = st.camera_input("Capturar")
+
     if foto is None:
+        return
+    if not st.button("Salvar e corrigir foto", type="primary"):
         return
     if not candidato_id:
         st.warning("Informe o ID do candidato antes de salvar a captura.")
         return
-    _processar_foto(candidato_id, foto)
+    novo = _processar_foto(candidato_id, foto)
+    if novo:
+        proximo_id = banco.proximo_candidato_id(DB_PATH)
+        st.session_state[PROXIMO_CANDIDATO_ID_KEY] = proximo_id
+        st.session_state[MENSAGEM_CANDIDATO_ID_KEY] = (
+            f"Foto salva. Proximo ID preparado: {proximo_id}."
+        )
+        st.rerun()
 
 
 def aba_planilhas():
@@ -239,7 +256,7 @@ def aba_planilhas():
             df = pd.read_csv(caminho)
         else:
             df = pd.read_excel(caminho)
-        st.dataframe(df, width="stretch")
+        st.dataframe(df, use_container_width=True)
     except Exception as exc:
         st.error(f"Falha ao ler arquivo: {exc}")
     st.caption("Atualize a pagina no celular para ver novos resultados.")
@@ -280,7 +297,7 @@ def aba_banco():
         return
 
     df = pd.DataFrame(formatadas)
-    st.dataframe(df, width="stretch")
+    st.dataframe(df, use_container_width=True)
     buffer = io.StringIO()
     df.to_csv(buffer, index=False)
     st.download_button(
@@ -291,7 +308,6 @@ def aba_banco():
     )
 
 
-_inicializar_estado()
 tab_correcao, tab_planilhas, tab_banco = st.tabs(
     ["Correcao por foto", "Planilhas", "Banco"]
 )

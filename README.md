@@ -2,7 +2,7 @@
 
 Aplicacao em Python para ler, corrigir e registrar gabaritos por imagem. Usa OpenCV para identificar o gabarito na foto, Streamlit para a interface no navegador/celular e SQLite para guardar os resultados localmente no computador.
 
-O fluxo: o professor abre o app no PC, acessa pelo celular na mesma rede WiFi, tira uma foto do gabarito, informa o ID do candidato, e o resultado fica salvo em um banco local `.db`, pronto para consulta e exportacao em CSV.
+O fluxo: o professor abre o app no PC, acessa pelo celular na mesma rede WiFi, confere o ID sugerido, tira uma foto do gabarito, e o resultado fica salvo em um banco local `.db`, pronto para consulta e exportacao em CSV.
 
 ---
 
@@ -31,7 +31,7 @@ O projeto corrige gabaritos de multipla escolha a partir de imagens.
 
 Principais recursos:
 
-- captura foto pelo celular usando `st.camera_input`;
+- captura foto pelo celular por envio de imagem ou `st.camera_input`;
 - detecta a folha/gabarito na imagem;
 - recorta e ajusta a perspectiva do gabarito;
 - identifica alternativas marcadas;
@@ -41,6 +41,7 @@ Principais recursos:
 - mostra uma aba de banco com filtros por ID e data;
 - exporta resultados para CSV;
 - permite visualizar planilhas `.csv` e `.xlsx` da pasta `data/`;
+- sugere automaticamente o proximo ID de candidato apos cada foto salva;
 - tambem possui modo de webcam local pelo OpenCV.
 
 ---
@@ -87,14 +88,13 @@ O fluxo principal acontece em `app_streamlit.py`.
 
 1. O usuario abre o Streamlit no computador.
 2. O celular acessa o link do app pela mesma rede WiFi.
-3. O usuario permite a camera no navegador.
-4. O usuario informa o ID do candidato.
-5. O usuario tira a foto do gabarito.
-6. O OpenCV (`src/extrator.py`) detecta o maior quadrilatero do gabarito.
-7. O gabarito e recortado, binarizado e comparado com as posicoes salvas.
-8. O app calcula acertos, erros e pontos (`src/processador.py`).
-9. O resultado e salvo no banco `resultados.db` (`src/banco.py`).
-10. A aba **Banco** permite visualizar, filtrar e exportar os registros.
+3. O app sugere o proximo ID do candidato com base no banco.
+4. O usuario tira ou envia a foto do gabarito.
+5. O OpenCV (`src/extrator.py`) detecta o maior quadrilatero do gabarito.
+6. O gabarito e recortado, binarizado e comparado com as posicoes salvas.
+7. O app calcula acertos, erros e pontos (`src/processador.py`).
+8. O resultado e salvo no banco `resultados.db` (`src/banco.py`).
+9. A aba **Banco** permite visualizar, filtrar e exportar os registros.
 
 ---
 
@@ -146,10 +146,13 @@ Depois feche e abra o PowerShell novamente.
 Modo recomendado. Na pasta `p1_lucio`:
 
 ```powershell
-streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8501
+python wifi_link.py --run
 ```
 
-Descubra o IP local:
+Esse comando detecta o IP local, abre o navegador no endereco correto e inicia o
+Streamlit aceitando conexoes da rede WiFi.
+
+Se quiser apenas descobrir o link, sem iniciar o servidor:
 
 ```powershell
 python wifi_link.py
@@ -164,12 +167,16 @@ Link Streamlit: http://192.168.0.10:8501
 
 Abra esse link no navegador do celular.
 
+Importante: nao abra `http://0.0.0.0:8501` no navegador. O endereco
+`0.0.0.0` serve apenas para o Streamlit escutar conexoes da rede. Para acessar o
+app, use o link com o IP local impresso pelo script.
+
 Importante:
 
 - celular e PC precisam estar na mesma rede WiFi;
 - se a porta `8501` estiver ocupada, use outra (ex.: `8502`);
 - se o firewall do Windows bloquear, libere o acesso do Python/Streamlit em rede privada;
-- no navegador do celular, autorize o uso da camera.
+- no celular, prefira a opcao **Enviar foto do celular** se a permissao da camera falhar.
 
 ---
 
@@ -291,14 +298,16 @@ Os arquivos gerados ficam na propria pasta `scripts/` e sao ignorados pelo git.
 
 ### A camera nao abre no celular
 
-- permissao de camera no navegador;
+- use a opcao **Enviar foto do celular** dentro do app;
+- a camera direta do navegador pode ser bloqueada quando o app esta em `http://IP:PORTA`;
+- para `st.camera_input` funcionar direto no celular, o navegador pode exigir HTTPS;
 - nenhum outro app esta usando a camera;
 - voce esta usando `http://IP:PORTA` correto.
 
 ### A porta 8501 ja esta em uso
 
 ```powershell
-streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8502
+python wifi_link.py --run --port 8502
 ```
 
 ### O gabarito nao e encontrado
@@ -324,9 +333,9 @@ streamlit run app_streamlit.py --server.address 0.0.0.0 --server.port 8502
 3. Entre em `p1_lucio`.
 4. Inicie o Streamlit.
 5. Abra o link no celular.
-6. Permita a camera.
-7. Informe o ID do candidato.
-8. Tire a foto do gabarito.
+6. Confira o ID do candidato sugerido.
+7. Use **Enviar foto do celular** ou **Camera do navegador**.
+8. Tire ou escolha a foto do gabarito.
 9. Confira a pontuacao.
 10. Abra a aba **Banco** para revisar os registros.
 11. Exporte o CSV ao final.

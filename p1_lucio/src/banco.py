@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 TABELA = "capturas"
@@ -25,10 +26,15 @@ COLUNAS = {
 }
 
 
+@contextmanager
 def conectar(db_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def iniciar(db_path):
@@ -92,6 +98,25 @@ def buscar_por_hash(db_path, candidato_id, foto_hash):
             (candidato_id, foto_hash),
         ).fetchone()
     return dict(linha) if linha else None
+
+
+def proximo_candidato_id(db_path):
+    """Retorna o proximo ID numerico de candidato com base no banco."""
+    with conectar(db_path) as conn:
+        linha = conn.execute(
+            f"""
+            SELECT candidato_id
+            FROM {TABELA}
+            WHERE
+                trim(candidato_id) GLOB '[0-9]*'
+                AND trim(candidato_id) NOT GLOB '*[^0-9]*'
+            ORDER BY CAST(trim(candidato_id) AS INTEGER) DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    if not linha:
+        return "1"
+    return str(int(linha["candidato_id"].strip()) + 1)
 
 
 def salvar(
