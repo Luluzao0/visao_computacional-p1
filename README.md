@@ -202,7 +202,9 @@ Para sair, pressione `q`.
 
 ## Banco de dados SQLite
 
-O app cria automaticamente o arquivo `resultados.db` em `p1_lucio/`.
+Por padrao local, o app cria automaticamente o arquivo `resultados.db` em `p1_lucio/`.
+Em deploy, tambem pode usar Supabase/PostgreSQL definindo `SUPABASE_DB_URL`
+ou `DATABASE_URL` nas variaveis de ambiente.
 
 Tabela principal: `capturas`.
 
@@ -231,6 +233,20 @@ Para backup, copie:
 p1_lucio/resultados.db
 p1_lucio/capturas/
 ```
+
+### Usar Supabase
+
+No Supabase, a tabela `capturas` fica em `public.capturas`. A migration do
+projeto esta em `supabase/migrations/`.
+
+No ambiente de deploy, configure:
+
+```text
+SUPABASE_DB_URL=postgresql://postgres.PROJECT_REF:SENHA@HOST:6543/postgres?sslmode=require
+```
+
+Pegue a URL exata em **Project Settings > Database > Connection string** no
+Dashboard do Supabase. Para deploy, prefira a string do pooler.
 
 ---
 
